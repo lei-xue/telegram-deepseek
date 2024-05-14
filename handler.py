@@ -27,7 +27,7 @@ async def chat(update, context):
             {"role": "user", "content": user_message},
         ],
         max_tokens=1024,
-        temperature=0.7,
+        temperature=1.0,
         stream=False
     )
     ai_response = response.choices[0].message.content
@@ -48,7 +48,6 @@ async def code(update, context):
             {"role": "user", "content": user_message},
         ],
         max_tokens=1024,
-        temperature=0.7,
         stream=False,
     )
     ai_response = response.choices[0].message.content
