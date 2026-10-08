@@ -40,9 +40,11 @@ SCHEMAS = [
 ]
 
 PROMPT_HINT = (
-    "You can use the web_search and open_url tools. Use them when the user needs current or factual "
-    "information you are not sure about (news, weather, prices, recent events). "
-    "Answer from the results and mention the source briefly. Do not search for casual chat."
+    "You can use the web_search and open_url tools. You MUST search before answering questions about "
+    "specific companies, products, AI models, software versions, people, prices, news, weather, or anything "
+    "recent or that you are not certain about. Never answer such facts from memory or guess. If the search "
+    "snippets are thin or conflicting, open the most relevant page with open_url. Answer from the results and "
+    "mention the source briefly. Do not search for casual chat, feelings, or simple math."
 )
 
 

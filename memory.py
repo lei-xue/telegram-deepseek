@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from datetime import datetime
@@ -20,8 +21,28 @@ SUMMARY_PROMPT = (
     "You maintain the long-term memory of a personal chat assistant. Merge the existing memory and the "
     "conversation below into one updated memory. Keep what matters for future chats: facts about the user, "
     "preferences, mood, plans, ongoing topics, important events with dates, and promises made. "
-    "Drop small talk. Write concise bullet points, at most 300 words, in the language the user uses. "
+    "Keep every dated item from the existing memory unless the conversation shows it is outdated. "
+    "Drop small talk. Write concise bullet points, at most 400 words, in the language the user uses. "
     "Output only the memory."
+)
+
+REMEMBER_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "remember",
+        "description": "Save one important fact about the user to long-term memory.",
+        "parameters": {
+            "type": "object",
+            "properties": {"fact": {"type": "string", "description": "Short, self-contained fact, e.g. 'Has a frontend interview next Wednesday afternoon'"}},
+            "required": ["fact"],
+        },
+    },
+}
+
+MEMORY_HINT = (
+    "当用户告诉你值得长期记住的事情（个人信息、喜好、计划、重要事件，或者让你记住某件事）时，"
+    "必须先调用 remember 工具保存一条简短的事实，然后再回复。只在回复里说「记住了」而不调用工具是无效的，"
+    "下次你就会忘记。闲聊和记忆里已有的内容不要保存。"
 )
 
 
@@ -44,17 +65,28 @@ def persona():
         return SYSTEM_PROMPT
 
 
-def system_prompt(data, extra=None):
+def system_prompt(data, hints=()):
     tz = ZoneInfo(TIMEZONE)
     parts = [persona(), f"Current time: {datetime.now(tz):%Y-%m-%d %A %H:%M} ({TIMEZONE})."]
     last = data.get("last_ts")
     if last and time.time() - last > 3600:
         parts.append(f"The previous message in this conversation was sent at {datetime.fromtimestamp(last, tz):%Y-%m-%d %A %H:%M}.")
-    if extra:
-        parts.append(extra)
+    parts.extend(hints)
     if data.get("summary"):
         parts.append("Memory of earlier conversations:\n" + data["summary"])
     return "\n\n".join(parts)
+
+
+def remember(data, arguments):
+    try:
+        fact = str(json.loads(arguments or "{}").get("fact", "")).strip()
+    except json.JSONDecodeError:
+        fact = ""
+    if not fact:
+        return "Nothing to remember."
+    today = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
+    data["summary"] = f"{data.get('summary', '')}\n- [{today}] {fact}".strip()
+    return "Saved to long-term memory."
 
 
 async def compact(data, summarize):

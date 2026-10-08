@@ -79,15 +79,19 @@ async def show_status(bot, chat_id, status, text):
     return status
 
 
-async def complete(context, chat_id, model, messages, use_tools=False):
-    """Run the model, letting it call the web tools for up to MAX_TOOL_ROUNDS rounds."""
+async def complete(context, chat_id, model, messages, use_tools=False, data=None):
+    """Run the model, letting it call tools for up to MAX_TOOL_ROUNDS rounds.
+
+    use_tools offers the web tools; passing the chat's data also offers the remember tool.
+    """
     client = context.bot_data["client"]
     extra = {"reasoning_effort": REASONING_EFFORT} if REASONING_EFFORT else None
+    specs = ([memory.REMEMBER_SCHEMA] if data is not None else []) + (tools.SCHEMAS if use_tools else [])
     messages = list(messages)
     status = None
     try:
         for round_ in range(MAX_TOOL_ROUNDS + 1):
-            offer_tools = use_tools and round_ < MAX_TOOL_ROUNDS
+            offer_tools = specs and round_ < MAX_TOOL_ROUNDS
             response = await client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -95,7 +99,7 @@ async def complete(context, chat_id, model, messages, use_tools=False):
                 temperature=TEMPERATURE,
                 stream=False,
                 extra_body=extra,
-                **({"tools": tools.SCHEMAS} if offer_tools else {}),
+                **({"tools": specs} if offer_tools else {}),
             )
             message = response.choices[0].message
             if not message.tool_calls:
@@ -110,8 +114,12 @@ async def complete(context, chat_id, model, messages, use_tools=False):
                 ],
             })
             for call in message.tool_calls:
-                status = await show_status(context.bot, chat_id, status, tools.describe(call.function.name, call.function.arguments))
-                result = await tools.run(call.function.name, call.function.arguments)
+                name, arguments = call.function.name, call.function.arguments
+                if name == "remember" and data is not None:
+                    result = memory.remember(data, arguments)
+                else:
+                    status = await show_status(context.bot, chat_id, status, tools.describe(name, arguments))
+                    result = await tools.run(name, arguments)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
     finally:
         if status is not None:
@@ -152,12 +160,13 @@ async def chat(update, context):
     async with typing(context.bot, chat_id):
         try:
             await memory.compact(data, lambda messages: complete(context, chat_id, model, messages))
+            hints = [memory.MEMORY_HINT] + ([tools.PROMPT_HINT] if WEB_SEARCH else [])
             messages = [
-                {"role": "system", "content": memory.system_prompt(data, tools.PROMPT_HINT if WEB_SEARCH else None)},
+                {"role": "system", "content": memory.system_prompt(data, hints)},
                 *data.get("history", []),
                 {"role": "user", "content": user_message},
             ]
-            ai_response = await complete(context, chat_id, model, messages, use_tools=WEB_SEARCH)
+            ai_response = await complete(context, chat_id, model, messages, use_tools=WEB_SEARCH, data=data)
         except Exception as e:
             await send_error(context, chat_id, e)
             return

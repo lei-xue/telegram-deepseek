@@ -4,7 +4,7 @@ This is an hobby project based using deepseek **AI API** to chat at **Telegram B
 It also works with any OpenAI-compatible server, including a **local [Ollama](https://ollama.com)** model, so you can chat from your phone with an AI running on your own computer.
 
 ## Features
-- **Memory:** remembers the conversation per chat and survives restarts (`data/`). When recent messages outgrow their budget (half of `CONTEXT_TOKENS`), the oldest ones are folded into a long-term memory summary. `/memory` shows it, `/reset` clears it.
+- **Memory:** remembers the conversation per chat and survives restarts (`data/`). When recent messages outgrow their budget (half of `CONTEXT_TOKENS`), the oldest ones are folded into a long-term memory summary. The model can also save important facts right away with its `remember` tool. `/memory` shows it, `/reset` clears it.
 - **Persona:** the system prompt is read from `persona.md` on every message, so edits apply immediately. Start from `persona.example.md`. The bot also knows the current time in `TIMEZONE`.
 - **Web search:** the model can call `web_search` (DuckDuckGo, no API key) and `open_url` when it needs current information. Only the search query leaves your machine. Turn off with `WEB_SEARCH=off`.
 - **Model buttons:** `/model` shows a button per model (`MODELS`, or everything the server lists).
