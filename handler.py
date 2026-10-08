@@ -1,8 +1,11 @@
 import asyncio
 import contextlib
+import json
 import os
+import re
 import time
 from functools import wraps
+from types import SimpleNamespace
 
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
@@ -27,6 +30,24 @@ TEMPERATURE = float(os.getenv("TEMPERATURE", "1.0"))
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "").strip()
 WEB_SEARCH = os.getenv("WEB_SEARCH", "on").lower() in ("on", "true", "1", "yes")
 MAX_TOOL_ROUNDS = 4
+# Tool results kept in the chat history so the model sees how earlier answers were found
+TRACE_CHARS = 600
+
+CLAIMS_SEARCH = re.compile(
+    r"(让我|我来|我帮你|帮你|我去)(查|搜)|查一下|搜一下|查了一下|搜索结果|查询结果|根据(最新的?|刚才的?)?(搜索|查询|预报)|🔍"
+    r"|let me (check|search|look)|I('ll| will) (check|search|look)|according to (the )?(search|latest)",
+    re.I,
+)
+# Some models (e.g. Spark-X2.5) occasionally emit tool calls as GLM-style text tags
+TEXT_TOOL_CALL = re.compile(r"<tool_call>\s*([\w.-]+)(.*?)</tool_call>", re.S)
+TEXT_TOOL_ARG = re.compile(r"<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>", re.S)
+CLAIMS_REMEMBER = re.compile(r"记住了|记下(来)?了|帮你记|我会记住|已经记|noted|I('ll| will) remember|I've saved", re.I)
+NUDGE = {
+    "web_search": "[System] Your last reply said you searched or would search, but you did not call web_search. "
+                  "Call web_search now and answer only from its results. Do not make up data.",
+    "remember": "[System] Your last reply said you saved it, but you did not call remember. "
+                "Call remember now with a short fact, then reply.",
+}
 
 
 def authorized(func):
@@ -79,16 +100,39 @@ async def show_status(bot, chat_id, status, text):
     return status
 
 
-async def complete(context, chat_id, model, messages, use_tools=False, data=None):
+def text_tool_calls(text):
+    """Parse tool calls that a model wrote as text tags and the server did not recognise."""
+    calls = []
+    for i, match in enumerate(TEXT_TOOL_CALL.finditer(text)):
+        args = {k.strip(): v.strip() for k, v in TEXT_TOOL_ARG.findall(match.group(2))}
+        calls.append(SimpleNamespace(id=f"text_call_{i}", function=SimpleNamespace(
+            name=match.group(1), arguments=json.dumps(args, ensure_ascii=False))))
+    return calls
+
+
+def missed_tool(text, used, use_tools, can_remember):
+    """Name the tool a reply claims to have used without calling it, if any."""
+    # Offers such as "要不要我帮你查一下？" are fine; only statements count
+    statements = " ".join(s for s in re.findall(r"[^。！？!?\n]+[。！？!?]?", text) if not re.search(r"[？?]|吗|呢", s))
+    if use_tools and not used & {"web_search", "open_url"} and CLAIMS_SEARCH.search(statements):
+        return "web_search"
+    if can_remember and "remember" not in used and CLAIMS_REMEMBER.search(statements):
+        return "remember"
+    return None
+
+
+async def complete(context, chat_id, model, messages, use_tools=False, data=None, trace=None):
     """Run the model, letting it call tools for up to MAX_TOOL_ROUNDS rounds.
 
     use_tools offers the web tools; passing the chat's data also offers the remember tool.
+    Tool calls and their (shortened) results are appended to `trace` when given.
     """
     client = context.bot_data["client"]
     extra = {"reasoning_effort": REASONING_EFFORT} if REASONING_EFFORT else None
     specs = ([memory.REMEMBER_SCHEMA] if data is not None else []) + (tools.SCHEMAS if use_tools else [])
     messages = list(messages)
     status = None
+    used, nudged = set(), False
     try:
         for round_ in range(MAX_TOOL_ROUNDS + 1):
             offer_tools = specs and round_ < MAX_TOOL_ROUNDS
@@ -102,25 +146,45 @@ async def complete(context, chat_id, model, messages, use_tools=False, data=None
                 **({"tools": specs} if offer_tools else {}),
             )
             message = response.choices[0].message
-            if not message.tool_calls:
-                return (message.content or "").strip() or "(empty response)"
+            content = message.content or ""
+            calls = message.tool_calls or (text_tool_calls(content) if offer_tools else [])
+            content = TEXT_TOOL_CALL.sub("", content).strip()
+            if not calls:
+                text = content
+                # Small models sometimes say "let me check" or "noted" and then make the answer up.
+                # Send it back once and ask for the real tool call.
+                missed = offer_tools and not nudged and missed_tool(text, used, use_tools, data is not None)
+                if not missed:
+                    return text or "(empty response)"
+                nudged = True
+                print(f"Reply claimed {missed} without calling it; asking again", flush=True)
+                messages += [
+                    {"role": "assistant", "content": text},
+                    {"role": "user", "content": NUDGE[missed]},
+                ]
+                continue
 
-            messages.append({
+            step = [{
                 "role": "assistant",
-                "content": message.content or "",
+                "content": content,
                 "tool_calls": [
                     {"id": c.id, "type": "function", "function": {"name": c.function.name, "arguments": c.function.arguments}}
-                    for c in message.tool_calls
+                    for c in calls
                 ],
-            })
-            for call in message.tool_calls:
+            }]
+            for call in calls:
                 name, arguments = call.function.name, call.function.arguments
+                used.add(name)
                 if name == "remember" and data is not None:
                     result = memory.remember(data, arguments)
                 else:
                     status = await show_status(context.bot, chat_id, status, tools.describe(name, arguments))
                     result = await tools.run(name, arguments)
-                messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+                step.append({"role": "tool", "tool_call_id": call.id, "content": result})
+            messages += step
+            if trace is not None:
+                trace += [dict(m, content=m["content"][:TRACE_CHARS]) for m in step]
+        return "(no answer after several tool calls)"
     finally:
         if status is not None:
             with contextlib.suppress(BadRequest):
@@ -160,19 +224,25 @@ async def chat(update, context):
     async with typing(context.bot, chat_id):
         try:
             await memory.compact(data, lambda messages: complete(context, chat_id, model, messages))
-            hints = [memory.MEMORY_HINT] + ([tools.PROMPT_HINT] if WEB_SEARCH else [])
+            hints = [f"You are running on the local model {model}.", memory.MEMORY_HINT]
+            if WEB_SEARCH:
+                hints.append(tools.PROMPT_HINT)
             messages = [
                 {"role": "system", "content": memory.system_prompt(data, hints)},
                 *data.get("history", []),
                 {"role": "user", "content": user_message},
             ]
-            ai_response = await complete(context, chat_id, model, messages, use_tools=WEB_SEARCH, data=data)
+            trace = []
+            ai_response = await complete(context, chat_id, model, messages, use_tools=WEB_SEARCH, data=data, trace=trace)
         except Exception as e:
             await send_error(context, chat_id, e)
             return
 
+    # Keep the tool calls in the history: a history of answers without them teaches
+    # small models to answer "searched" questions from memory
     data.setdefault("history", []).extend([
         {"role": "user", "content": user_message},
+        *trace,
         {"role": "assistant", "content": ai_response},
     ])
     data["last_ts"] = time.time()

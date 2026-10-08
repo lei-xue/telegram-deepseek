@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -67,7 +67,10 @@ def persona():
 
 def system_prompt(data, hints=()):
     tz = ZoneInfo(TIMEZONE)
-    parts = [persona(), f"Current time: {datetime.now(tz):%Y-%m-%d %A %H:%M} ({TIMEZONE})."]
+    now = datetime.now(tz)
+    # Small models get relative dates ("next Monday") wrong, so spell out the coming week
+    week = ", ".join(f"{now + timedelta(days=i):%a %m-%d}" for i in range(1, 8))
+    parts = [persona(), f"Current time: {now:%Y-%m-%d %A %H:%M} ({TIMEZONE}). Next 7 days: {week}."]
     last = data.get("last_ts")
     if last and time.time() - last > 3600:
         parts.append(f"The previous message in this conversation was sent at {datetime.fromtimestamp(last, tz):%Y-%m-%d %A %H:%M}.")
@@ -103,7 +106,7 @@ async def compact(data, summarize):
     while keep < len(history) and history[keep]["role"] != "user":
         keep += 1
 
-    transcript = "\n".join(f"{m['role']}: {m['content']}" for m in history[:keep])
+    transcript = "\n".join(f"{m['role']}: {m['content']}" for m in history[:keep] if m["role"] in ("user", "assistant") and m["content"])
     messages = [
         {"role": "system", "content": SUMMARY_PROMPT},
         {"role": "user", "content": f"Existing memory:\n{data.get('summary') or '(none)'}\n\nConversation:\n{transcript}"},
