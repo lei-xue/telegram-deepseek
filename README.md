@@ -4,19 +4,34 @@ This is an hobby project based using deepseek **AI API** to chat at **Telegram B
 It also works with any OpenAI-compatible server, including a **local [Ollama](https://ollama.com)** model, so you can chat from your phone with an AI running on your own computer.
 
 ## Features
-- Remembers the conversation per chat (last `HISTORY_TURNS` exchanges); `/reset` forgets it
-- `/model` lists the server's models and switches the model for the current chat
-- `/code <question>` for one-off coding help
-- Shows "typing…" while the model works and splits replies longer than Telegram's 4096-character limit
-- Only answers user IDs in `ALLOWED_USER_IDS`; anyone else just gets their own user ID back
+- **Memory:** remembers the conversation per chat and survives restarts (`data/`). When recent messages outgrow their budget (half of `CONTEXT_TOKENS`), the oldest ones are folded into a long-term memory summary. `/memory` shows it, `/reset` clears it.
+- **Persona:** the system prompt is read from `persona.md` on every message, so edits apply immediately. Start from `persona.example.md`. The bot also knows the current time in `TIMEZONE`.
+- **Web search:** the model can call `web_search` (DuckDuckGo, no API key) and `open_url` when it needs current information. Only the search query leaves your machine. Turn off with `WEB_SEARCH=off`.
+- **Model buttons:** `/model` shows a button per model (`MODELS`, or everything the server lists).
+- Markdown replies are rendered as Telegram formatting; long replies are split.
+- `/code <question>` for one-off coding help.
+- Only answers user IDs in `ALLOWED_USER_IDS`; anyone else just gets their own user ID back.
 
 ## Setup
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
 2. `cp .env_sample .env` and fill in `TELEGRAM_BOT_TOKEN`. Leave `ALLOWED_USER_IDS` empty for now.
-3. Pick a backend in `.env`:
+3. `cp persona.example.md persona.md` and make it yours.
+4. Pick a backend in `.env`:
    - **DeepSeek:** set `DEEPSEEK_API_KEY`.
-   - **Local Ollama:** set `OPENAI_BASE_URL=http://127.0.0.1:11434/v1` and `MODEL` to a model from `ollama list`. For reasoning models such as qwen3.5, `REASONING_EFFORT=none` skips the thinking phase and makes replies much faster.
-4. Start the bot, message it from Telegram, and put the user ID it replies with into `ALLOWED_USER_IDS`. Restart the bot.
+   - **Local Ollama:** set `OPENAI_BASE_URL=http://127.0.0.1:11434/v1` and `MODEL`. For reasoning models such as qwen3.5, `REASONING_EFFORT=none` skips the thinking phase and makes replies much faster.
+5. Start the bot, message it from Telegram, and put the user ID it replies with into `ALLOWED_USER_IDS`. Restart the bot.
+
+### Ollama context size
+Ollama's OpenAI-compatible endpoint runs models with a 4096-token context by default and silently drops the oldest text beyond that. Create a variant with a larger window and set `CONTEXT_TOKENS` to match:
+```
+# Modelfile
+FROM qwen3.5:4b
+PARAMETER num_ctx 32768
+```
+```bash
+ollama create qwen3.5-chat:4b -f Modelfile
+```
+If you offer several models, set `CONTEXT_TOKENS` to the smallest window among them.
 
 ## Run
 **Python**

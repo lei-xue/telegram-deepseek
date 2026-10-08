@@ -5,10 +5,10 @@ async def set_commands(bot):
     commands = (
         BotCommand("start", "Start the bot and get a welcome message"),
         BotCommand("help", "Show available commands"),
-        BotCommand("chat", "Send this to start chatting with the bot"),
+        BotCommand("model", "Switch the AI model"),
+        BotCommand("memory", "Show what the bot remembers"),
         BotCommand("code", "Use this to get coding help"),
-        BotCommand("model", "Show or switch the AI model"),
-        BotCommand("reset", "Forget the conversation"),
+        BotCommand("reset", "Forget the conversation and memory"),
     )
     existing_commands = await bot.get_my_commands()
     if existing_commands != commands:

@@ -16,3 +16,7 @@ venv/
 
 # Runtime
 *.log
+
+# Personal data
+persona.md
+data/
