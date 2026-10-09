@@ -14,6 +14,7 @@ from telegram.constants import ChatAction, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
+import i18n
 import memory
 import onboarding
 import tools
@@ -35,22 +36,16 @@ MAX_TOOL_ROUNDS = 4
 # Tool results kept in the chat history so the model sees how earlier answers were found
 TRACE_CHARS = 600
 
-CLAIMS_SEARCH = re.compile(
-    r"(让我|我来|我帮你|帮你|我去)(查|搜)|查一下|搜一下|查了一下|搜索结果|查询结果|根据(最新的?|刚才的?)?(搜索|查询|预报)|🔍"
-    r"|let me (check|search|look)|I('ll| will) (check|search|look)|according to (the )?(search|latest)",
-    re.I,
-)
+CLAIMS_SEARCH = i18n.pattern("claims_search")
+CLAIMS_REMEMBER = i18n.pattern("claims_remember")
+REFUSAL = i18n.pattern("refusal")
+QUESTION = i18n.pattern("question")
+WRITING_REQUEST = i18n.pattern("writing_request")
+OFFER = i18n.pattern("offer")
+SENTENCE = re.compile(rf"[^{i18n.pattern('sentence_end')}\n]+[{i18n.pattern('sentence_end')}]?")
 # Some models (e.g. Spark-X2.5) occasionally emit tool calls as GLM-style text tags
 TEXT_TOOL_CALL = re.compile(r"<tool_call>\s*([\w.-]+)(.*?)</tool_call>", re.S)
 TEXT_TOOL_ARG = re.compile(r"<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>", re.S)
-CLAIMS_REMEMBER = re.compile(r"记住了|记下(来)?了|帮你记|我会记住|已经记|noted|I('ll| will) remember|I've saved", re.I)
-REFUSAL = re.compile(
-    r"(无法|不能|不便|不予|不会)(为你|为您|对此|就此)?(提供|回答|讨论|解答|回应|作出|评论|教你)|不适合讨论|敏感(话题|内容|问题|议题)"
-    r"|违反.{0,8}(法律|法规)|不予置评|换个话题|I can(not|'t) (help|provide|discuss)",
-    re.I,
-)
-QUESTION = re.compile(r"[？?]|什么|怎么|为什么|多少|几|谁|哪|是否|是不是|吗|how|what|why|who|which|when|is it", re.I)
-WRITING_REQUEST = re.compile(r"写|编|故事|小说|剧情|扮演|角色|场景|续|write|story|roleplay", re.I)
 NUDGE = {
     "refusal": "[System] The user asked a factual question. Do not refuse. Call web_search, then summarize what the "
                "sources say, presenting the main viewpoints neutrally and naming the sources. For political or "
@@ -128,8 +123,8 @@ def is_factual_question(text):
 
 def missed_tool(text, used, use_tools, can_remember, question=None):
     """Name the tool a reply should have called but did not, if any."""
-    # Offers such as "要不要我帮你查一下？" are fine; only statements count
-    statements = " ".join(s for s in re.findall(r"[^。！？!?\n]+[。！？!?]?", text) if not re.search(r"[？?]|吗|呢", s))
+    # Offers such as "Want me to look it up?" are fine; only statements count
+    statements = " ".join(s for s in SENTENCE.findall(text) if not OFFER.search(s))
     searched = bool(used & {"web_search", "open_url"})
     if use_tools and not searched and CLAIMS_SEARCH.search(statements):
         return "web_search"
@@ -286,6 +281,8 @@ async def chat(update, context):
             hints = [f"You are running on the local model {model}.", memory.MEMORY_HINT]
             if WEB_SEARCH:
                 hints.append(tools.PROMPT_HINT)
+            # Last, so models that lean towards one language still follow the user's
+            hints.append("Always reply in the same language as the user's latest message.")
             messages = [
                 {"role": "system", "content": memory.system_prompt(data, hints)},
                 *data.get("history", []),
@@ -397,15 +394,15 @@ async def profile(update, context):
         key = onboarding.field_key(context.args[0])
         value = " ".join(context.args[1:]).strip()
         if not key or not value:
-            await context.bot.send_message(chat_id=chat_id, text=onboarding.PROFILE_HELP)
+            await context.bot.send_message(chat_id=chat_id, text=i18n.T["profile_help"])
             return
         answers = onboarding.load()
         answers[key] = value
         if key == "city":
             answers["timezone"] = await resolve_timezone(context, context.chat_data.get("model", MODEL), value)
         onboarding.save(answers)
-    text = memory.user_profile() or "还没有资料。No profile yet."
-    await context.bot.send_message(chat_id=chat_id, text=f"{text}\n\n{onboarding.PROFILE_HELP}")
+    text = memory.user_profile() or i18n.T["no_profile"]
+    await context.bot.send_message(chat_id=chat_id, text=f"{text}\n\n{i18n.T['profile_help']}")
 
 
 @authorized
