@@ -42,7 +42,17 @@ CLAIMS_SEARCH = re.compile(
 TEXT_TOOL_CALL = re.compile(r"<tool_call>\s*([\w.-]+)(.*?)</tool_call>", re.S)
 TEXT_TOOL_ARG = re.compile(r"<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>", re.S)
 CLAIMS_REMEMBER = re.compile(r"记住了|记下(来)?了|帮你记|我会记住|已经记|noted|I('ll| will) remember|I've saved", re.I)
+REFUSAL = re.compile(
+    r"(无法|不能|不便|不予|不会)(为你|为您|对此|就此)?(提供|回答|讨论|解答|回应|作出|评论|教你)|不适合讨论|敏感(话题|内容|问题|议题)"
+    r"|违反.{0,8}(法律|法规)|不予置评|换个话题|I can(not|'t) (help|provide|discuss)",
+    re.I,
+)
+QUESTION = re.compile(r"[？?]|什么|怎么|为什么|多少|几|谁|哪|是否|是不是|吗|how|what|why|who|which|when|is it", re.I)
+WRITING_REQUEST = re.compile(r"写|编|故事|小说|剧情|扮演|角色|场景|续|write|story|roleplay", re.I)
 NUDGE = {
+    "refusal": "[System] The user asked a factual question. Do not refuse. Call web_search, then summarize what the "
+               "sources say, presenting the main viewpoints neutrally and naming the sources. For political or "
+               "international topics, also search in English and include international sources.",
     "web_search": "[System] Your last reply said you searched or would search, but you did not call web_search. "
                   "Call web_search now and answer only from its results. Do not make up data.",
     "remember": "[System] Your last reply said you saved it, but you did not call remember. "
@@ -110,18 +120,26 @@ def text_tool_calls(text):
     return calls
 
 
-def missed_tool(text, used, use_tools, can_remember):
-    """Name the tool a reply claims to have used without calling it, if any."""
+def is_factual_question(text):
+    return bool(text) and bool(QUESTION.search(text)) and not WRITING_REQUEST.search(text)
+
+
+def missed_tool(text, used, use_tools, can_remember, question=None):
+    """Name the tool a reply should have called but did not, if any."""
     # Offers such as "要不要我帮你查一下？" are fine; only statements count
     statements = " ".join(s for s in re.findall(r"[^。！？!?\n]+[。！？!?]?", text) if not re.search(r"[？?]|吗|呢", s))
-    if use_tools and not used & {"web_search", "open_url"} and CLAIMS_SEARCH.search(statements):
+    searched = bool(used & {"web_search", "open_url"})
+    if use_tools and not searched and CLAIMS_SEARCH.search(statements):
         return "web_search"
+    # Refusing a factual question: look it up and report what sources say instead
+    if use_tools and not searched and REFUSAL.search(text[:300]) and is_factual_question(question):
+        return "refusal"
     if can_remember and "remember" not in used and CLAIMS_REMEMBER.search(statements):
         return "remember"
     return None
 
 
-async def complete(context, chat_id, model, messages, use_tools=False, data=None, trace=None):
+async def complete(context, chat_id, model, messages, use_tools=False, data=None, trace=None, question=None):
     """Run the model, letting it call tools for up to MAX_TOOL_ROUNDS rounds.
 
     use_tools offers the web tools; passing the chat's data also offers the remember tool.
@@ -153,7 +171,7 @@ async def complete(context, chat_id, model, messages, use_tools=False, data=None
                 text = content
                 # Small models sometimes say "let me check" or "noted" and then make the answer up.
                 # Send it back once and ask for the real tool call.
-                missed = offer_tools and not nudged and missed_tool(text, used, use_tools, data is not None)
+                missed = offer_tools and not nudged and missed_tool(text, used, use_tools, data is not None, question)
                 if not missed:
                     return text or "(empty response)"
                 nudged = True
@@ -233,7 +251,8 @@ async def chat(update, context):
                 {"role": "user", "content": user_message},
             ]
             trace = []
-            ai_response = await complete(context, chat_id, model, messages, use_tools=WEB_SEARCH, data=data, trace=trace)
+            ai_response = await complete(context, chat_id, model, messages, use_tools=WEB_SEARCH, data=data,
+                                         trace=trace, question=user_message)
         except Exception as e:
             await send_error(context, chat_id, e)
             return
