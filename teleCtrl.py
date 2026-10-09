@@ -1,18 +1,20 @@
 
 from telegram import BotCommand
-from telegram.ext import Updater
 
 async def set_commands(bot):
-    commands = [
+    commands = (
         BotCommand("start", "Start the bot and get a welcome message"),
-        BotCommand("chat", "Send this to start chatting with the bot"),
-        BotCommand("code", "Use this to get coding help or execute code"),
-        BotCommand("reset", "Reset the chat user data")
-    ]
+        BotCommand("help", "Show available commands"),
+        BotCommand("model", "Switch the AI model"),
+        BotCommand("memory", "Show what the bot remembers"),
+        BotCommand("profile", "What the bot knows about you"),
+        BotCommand("setup", "Answer the get-to-know-you questions again"),
+        BotCommand("code", "Use this to get coding help"),
+        BotCommand("reset", "Forget the conversation and memory"),
+    )
     existing_commands = await bot.get_my_commands()
     if existing_commands != commands:
         await bot.set_my_commands(commands=commands)
         print("Commands set successfully.")
     else:
-        print("Commands are already set.") 
-
+        print("Commands are already set.")
