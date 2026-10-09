@@ -7,6 +7,8 @@ async def set_commands(bot):
         BotCommand("help", "Show available commands"),
         BotCommand("model", "Switch the AI model"),
         BotCommand("memory", "Show what the bot remembers"),
+        BotCommand("profile", "What the bot knows about you"),
+        BotCommand("setup", "Answer the get-to-know-you questions again"),
         BotCommand("code", "Use this to get coding help"),
         BotCommand("reset", "Forget the conversation and memory"),
     )

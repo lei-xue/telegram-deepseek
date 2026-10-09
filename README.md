@@ -5,7 +5,7 @@ It also works with any OpenAI-compatible server, including a **local [Ollama](ht
 
 ## Features
 - **Memory:** remembers the conversation per chat and survives restarts (`data/`). When recent messages outgrow their budget (half of `CONTEXT_TOKENS`), the oldest ones are folded into a long-term memory summary. The model can also save important facts right away with its `remember` tool. `/memory` shows it, `/reset` clears it.
-- **Persona:** the system prompt is read from `persona.md` on every message, so edits apply immediately. Start from `persona.example.md`. The bot also knows the current time in `TIMEZONE`.
+- **Soul and user profile:** `soul.md` describes the assistant (name, tone, principles) and `user.md` describes you (name, city and time zone, language, interests, preferred style, topics to avoid). Both are read on every message, so edits apply immediately. If `user.md` does not exist, the bot asks six quick questions in the first chat (each can be skipped) and writes it for you; `/profile` shows it and `/setup` asks again. The bot knows the current time in your time zone.
 - **Web search:** the model can call `web_search` (DuckDuckGo, no API key) and `open_url` when it needs current information. Only the search query leaves your machine. Turn off with `WEB_SEARCH=off`.
 - **Model buttons:** `/model` shows a button per model (`MODELS`, or everything the server lists).
 - Markdown replies are rendered as Telegram formatting; long replies are split.
@@ -15,7 +15,7 @@ It also works with any OpenAI-compatible server, including a **local [Ollama](ht
 ## Setup
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
 2. `cp .env_sample .env` and fill in `TELEGRAM_BOT_TOKEN`. Leave `ALLOWED_USER_IDS` empty for now.
-3. `cp persona.example.md persona.md` and make it yours.
+3. `cp soul.example.md soul.md` and adjust the assistant's character. Optionally `cp user.example.md user.md` and fill it in yourself, or let the bot ask on the first chat.
 4. Pick a backend in `.env`:
    - **DeepSeek:** set `DEEPSEEK_API_KEY`.
    - **Local Ollama:** set `OPENAI_BASE_URL=http://127.0.0.1:11434/v1` and `MODEL`. For reasoning models such as qwen3.5, `REASONING_EFFORT=none` skips the thinking phase and makes replies much faster.

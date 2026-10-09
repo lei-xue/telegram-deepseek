@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -9,8 +10,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PERSONA_FILE = os.path.join(BASE_DIR, os.getenv("PERSONA_FILE", "persona.md"))
+# soul.md: the assistant's own character. user.md: what it knows about the user (filled in by /setup).
+SOUL_FILE = os.path.join(BASE_DIR, os.getenv("SOUL_FILE", "soul.md"))
+LEGACY_PERSONA_FILE = os.path.join(BASE_DIR, "persona.md")
+USER_FILE = os.path.join(BASE_DIR, os.getenv("USER_FILE", "user.md"))
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a helpful assistant")
+# Fallback when user.md has no timezone
 TIMEZONE = os.getenv("TIMEZONE", "America/Los_Angeles")
 # Context window of the model. Half of it is kept for recent messages, the rest for the
 # system prompt, memory summary, web results and the reply.
@@ -56,21 +61,49 @@ def history_tokens(history):
     return sum(estimate_tokens(m["content"]) for m in history)
 
 
-def persona():
-    # Read on every message so edits to the persona file apply without a restart
+def _read(path):
     try:
-        with open(PERSONA_FILE, encoding="utf-8") as f:
-            return f.read().strip() or SYSTEM_PROMPT
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
     except FileNotFoundError:
-        return SYSTEM_PROMPT
+        return ""
+
+
+def soul():
+    # Read on every message so edits apply without a restart
+    return _read(SOUL_FILE) or _read(LEGACY_PERSONA_FILE) or SYSTEM_PROMPT
+
+
+def user_profile():
+    return _read(USER_FILE)
+
+
+def has_profile():
+    return os.path.exists(USER_FILE)
+
+
+def timezone():
+    match = re.search(r"^- Timezone:\s*(\S+)", user_profile(), re.M)
+    if match:
+        try:
+            ZoneInfo(match.group(1))
+            return match.group(1)
+        except Exception:
+            pass
+    return TIMEZONE
 
 
 def system_prompt(data, hints=()):
-    tz = ZoneInfo(TIMEZONE)
+    tzname = timezone()
+    tz = ZoneInfo(tzname)
     now = datetime.now(tz)
     # Small models get relative dates ("next Monday") wrong, so spell out the coming week
     week = ", ".join(f"{now + timedelta(days=i):%a %m-%d}" for i in range(1, 8))
-    parts = [persona(), f"Current time: {now:%Y-%m-%d %A %H:%M} ({TIMEZONE}). Next 7 days: {week}."]
+    parts = [soul()]
+    profile = user_profile()
+    if "- " in profile:
+        parts.append("About the user (mention only when relevant):\n" + profile)
+    parts.append(f"Current time: {now:%Y-%m-%d %A %H:%M} ({tzname}). Next 7 days: {week}.")
     last = data.get("last_ts")
     if last and time.time() - last > 3600:
         parts.append(f"The previous message in this conversation was sent at {datetime.fromtimestamp(last, tz):%Y-%m-%d %A %H:%M}.")
@@ -87,7 +120,7 @@ def remember(data, arguments):
         fact = ""
     if not fact:
         return "Nothing to remember."
-    today = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
+    today = datetime.now(ZoneInfo(timezone())).strftime("%Y-%m-%d")
     data["summary"] = f"{data.get('summary', '')}\n- [{today}] {fact}".strip()
     return "Saved to long-term memory."
 

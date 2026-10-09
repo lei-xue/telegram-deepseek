@@ -6,6 +6,7 @@ import re
 import time
 from functools import wraps
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
@@ -14,6 +15,7 @@ from telegram.error import BadRequest
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 import memory
+import onboarding
 import tools
 from tgformat import split_message, to_html
 
@@ -224,9 +226,41 @@ async def send_error(context, chat_id, error):
     await context.bot.send_message(chat_id=chat_id, text=f"Model error: {error}")
 
 
+async def resolve_timezone(context, model, place):
+    """IANA time zone for a city (or a time zone typed directly); falls back to TIMEZONE."""
+    def valid(name):
+        try:
+            ZoneInfo(name)
+            return True
+        except Exception:
+            return False
+
+    if valid(place.strip()):
+        return place.strip()
+    try:
+        text = await complete(context, None, model, [{"role": "user", "content":
+            f"What is the IANA time zone name for this place: {place}? Reply with only the name, e.g. America/Los_Angeles."}])
+        match = re.search(r"[A-Za-z]+(?:/[A-Za-z0-9_+-]+)+", text)
+        if match and valid(match.group(0)):
+            return match.group(0)
+    except Exception as e:
+        print(f"Time zone lookup failed: {e!r}", flush=True)
+    return memory.TIMEZONE
+
+
+async def onboarding_answer(context, chat_id, value):
+    model = context.chat_data.get("model", MODEL)
+    await onboarding.answer(context.bot, chat_id, context.chat_data, value,
+                            lambda place: resolve_timezone(context, model, place))
+
+
 @authorized
 async def start(update, context):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Hello! I'm an AI-powered chatbot. Type /help to see available commands")
+    chat_id = update.effective_chat.id
+    if not memory.has_profile() and not onboarding.active(context.chat_data):
+        await onboarding.start(context.bot, chat_id, context.chat_data)
+        return
+    await context.bot.send_message(chat_id=chat_id, text="Hello! I'm an AI-powered chatbot. Type /help to see available commands")
 
 
 @authorized
@@ -238,6 +272,13 @@ async def chat(update, context):
         return
 
     data = context.chat_data
+    if onboarding.active(data):
+        await onboarding_answer(context, chat_id, user_message)
+        return
+    if not memory.has_profile():
+        await onboarding.start(context.bot, chat_id, data)
+        return
+
     model = data.get("model", MODEL)
     async with typing(context.bot, chat_id):
         try:
@@ -332,6 +373,30 @@ async def model_button(update, context):
 
 
 @authorized
+async def onboarding_button(update, context):
+    query = update.callback_query
+    _, step, choice = query.data.split(":")
+    if not onboarding.active(context.chat_data) or int(step) != context.chat_data["onboarding"]["step"]:
+        await query.answer("This question is already answered")
+        return
+    await query.answer()
+    with contextlib.suppress(BadRequest):
+        await query.edit_message_reply_markup(reply_markup=None)
+    await onboarding_answer(context, update.effective_chat.id, onboarding.option(context.chat_data, int(step), choice))
+
+
+@authorized
+async def setup(update, context):
+    await onboarding.start(context.bot, update.effective_chat.id, context.chat_data)
+
+
+@authorized
+async def profile(update, context):
+    text = memory.user_profile() or "No profile yet. Send /setup to fill it in."
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=text + "\n\n/setup – answer the questions again")
+
+
+@authorized
 async def show_memory(update, context):
     data = context.chat_data
     history = data.get("history", [])
@@ -356,6 +421,7 @@ async def help_command(update, context):
              + (" and can search the web" if WEB_SEARCH else "") + ".\n\n"
              "/model – switch the model\n"
              "/memory – show what I remember\n"
+             "/profile – what I know about you (/setup to change it)\n"
              "/code <question> – one-off coding help\n"
              "/reset – forget the conversation and memory",
     )
@@ -369,7 +435,10 @@ def setup_handlers(application, client):
     application.add_handler(CommandHandler("model", model))
     application.add_handler(CommandHandler("memory", show_memory))
     application.add_handler(CommandHandler("reset", reset))
+    application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(CommandHandler("setup", setup))
     application.add_handler(CallbackQueryHandler(model_button, pattern=r"^model:\d+$"))
+    application.add_handler(CallbackQueryHandler(onboarding_button, pattern=r"^ob:\d+:(\d+|skip)$"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
     application.bot_data["client"] = client
