@@ -5,34 +5,27 @@ Only the basics are asked up front; the rest can be added later with /profile <f
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 import memory
+from i18n import T
 
-SKIP = "跳过 / Skip"
-# (key, label in user.md, question, button options)
+# (key, label in user.md, question text key, button options)
 STEPS = [
-    ("name", "Name", "怎么称呼你？\nWhat should I call you?", []),
-    ("city", "City", "你在哪个城市？我会按你那边的时间聊天。\nWhich city are you in? I'll keep track of your local time.", []),
-    ("style", "Preferred style", "希望我是什么风格？\nHow would you like me to talk?", ["温柔 / Gentle", "活泼 / Playful", "简洁直接 / Brief and direct"]),
+    ("name", "Name", "question_name", []),
+    ("city", "City", "question_city", []),
+    ("style", "Preferred style", "question_style", T["style_options"]),
 ]
-# Every field user.md can hold, with the names /profile accepts for it
+# Every field user.md can hold, with the names /profile accepts for it (plus the locale's aliases)
 FIELDS = [
-    ("name", "Name", ("name", "称呼", "名字")),
-    ("city", "City", ("city", "城市")),
-    ("timezone", "Timezone", ("timezone", "时区")),
-    ("language", "Language", ("language", "语言")),
-    ("about", "About", ("about", "关于", "工作", "爱好")),
-    ("style", "Preferred style", ("style", "风格")),
-    ("avoid", "Avoid", ("avoid", "避开", "不聊")),
+    (key, label, (key, *aliases, *T["field_aliases"].get(key, [])))
+    for key, label, aliases in [
+        ("name", "Name", ()),
+        ("city", "City", ()),
+        ("timezone", "Timezone", ("tz",)),
+        ("language", "Language", ()),
+        ("about", "About", ("hobbies", "work")),
+        ("style", "Preferred style", ()),
+        ("avoid", "Avoid", ()),
+    ]
 ]
-
-INTRO = ("你好！先简单认识一下，就 3 个问题，都可以跳过。\n"
-         "Hi! Three quick questions so I can get to know you. Skip any of them.")
-DONE = ("好啦 😊 其他的我们慢慢聊、慢慢了解。想补充资料可以发 /profile 查看和修改。现在想聊点什么？\n"
-        "All set! I'll get to know you as we chat. Send /profile to view or add details. What's on your mind?")
-PROFILE_HELP = ("修改或补充一项：/profile <字段> <内容>\n"
-                "字段：称呼、城市、时区、语言、爱好、风格、不聊\n"
-                "例如：/profile 爱好 猫和徒步\n"
-                "Edit one item: /profile <field> <value>, e.g. /profile about cats and hiking\n"
-                "/setup – answer the first questions again")
 
 
 def active(data):
@@ -41,17 +34,17 @@ def active(data):
 
 def keyboard(step):
     rows = [[InlineKeyboardButton(option, callback_data=f"ob:{step}:{i}")] for i, option in enumerate(STEPS[step][3])]
-    rows.append([InlineKeyboardButton(SKIP, callback_data=f"ob:{step}:skip")])
+    rows.append([InlineKeyboardButton(T["skip"], callback_data=f"ob:{step}:skip")])
     return InlineKeyboardMarkup(rows)
 
 
 async def ask(bot, chat_id, step):
-    await bot.send_message(chat_id=chat_id, text=f"({step + 1}/{len(STEPS)}) {STEPS[step][2]}", reply_markup=keyboard(step))
+    await bot.send_message(chat_id=chat_id, text=f"({step + 1}/{len(STEPS)}) {T[STEPS[step][2]]}", reply_markup=keyboard(step))
 
 
 async def start(bot, chat_id, data):
     data["onboarding"] = {"step": 0, "answers": {}}
-    await bot.send_message(chat_id=chat_id, text=INTRO)
+    await bot.send_message(chat_id=chat_id, text=T["intro"])
     await ask(bot, chat_id, 0)
 
 
@@ -79,7 +72,7 @@ async def answer(bot, chat_id, data, value, resolve_timezone):
         answers["timezone"] = await resolve_timezone(answers["city"])
     # Re-running /setup keeps details added later (about, avoid, ...) unless re-answered
     save({**load(), **answers})
-    await bot.send_message(chat_id=chat_id, text=DONE)
+    await bot.send_message(chat_id=chat_id, text=T["done"])
 
 
 def load():
