@@ -392,8 +392,20 @@ async def setup(update, context):
 
 @authorized
 async def profile(update, context):
-    text = memory.user_profile() or "No profile yet. Send /setup to fill it in."
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=text + "\n\n/setup – answer the questions again")
+    chat_id = update.effective_chat.id
+    if context.args:
+        key = onboarding.field_key(context.args[0])
+        value = " ".join(context.args[1:]).strip()
+        if not key or not value:
+            await context.bot.send_message(chat_id=chat_id, text=onboarding.PROFILE_HELP)
+            return
+        answers = onboarding.load()
+        answers[key] = value
+        if key == "city":
+            answers["timezone"] = await resolve_timezone(context, context.chat_data.get("model", MODEL), value)
+        onboarding.save(answers)
+    text = memory.user_profile() or "还没有资料。No profile yet."
+    await context.bot.send_message(chat_id=chat_id, text=f"{text}\n\n{onboarding.PROFILE_HELP}")
 
 
 @authorized

@@ -48,6 +48,7 @@ MEMORY_HINT = (
     "当用户告诉你值得长期记住的事情（个人信息、喜好、计划、重要事件，或者让你记住某件事）时，"
     "必须先调用 remember 工具保存一条简短的事实，然后再回复。只在回复里说「记住了」而不调用工具是无效的，"
     "下次你就会忘记。闲聊和记忆里已有的内容不要保存。"
+    "用户资料里没写的信息（比如工作、爱好、不想聊的话题），在聊天中自然地了解，不要连续追问；了解到了也用 remember 保存。"
 )
 
 
@@ -103,6 +104,11 @@ def system_prompt(data, hints=()):
     profile = user_profile()
     if "- " in profile:
         parts.append("About the user (mention only when relevant):\n" + profile)
+        name = re.search(r"^- Name:\s*(.+)$", profile, re.M)
+        if name:
+            user = name.group(1).strip()
+            parts.append(f"The user's name is {user}; it is not your name. In the user's messages, 我 means the user: "
+                         f"if they ask 「我叫什么？」 or 「你知道我是谁吗？」, answer that they are {user}.")
     parts.append(f"Current time: {now:%Y-%m-%d %A %H:%M} ({tzname}). Next 7 days: {week}.")
     last = data.get("last_ts")
     if last and time.time() - last > 3600:
