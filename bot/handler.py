@@ -14,11 +14,11 @@ from telegram.constants import ChatAction, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
-import i18n
-import memory
-import onboarding
-import tools
-from tgformat import split_message, to_html
+from . import i18n
+from . import memory
+from . import onboarding
+from . import tools
+from .tgformat import split_message, to_html
 
 load_dotenv()
 

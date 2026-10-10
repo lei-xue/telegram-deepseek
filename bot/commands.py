@@ -1,4 +1,3 @@
-
 from telegram import BotCommand
 
 async def set_commands(bot):

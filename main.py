@@ -1,9 +1,9 @@
 import os
 from dotenv import load_dotenv
 from telegram.ext import Application, PersistenceInput, PicklePersistence
-from handler import setup_handlers
+from bot.handler import setup_handlers
 from openai import AsyncOpenAI
-from teleCtrl import set_commands
+from bot.commands import set_commands
 
 load_dotenv()
 

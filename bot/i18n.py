@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Personal files live in the repository root, one level above this package
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCALE_FILE = os.path.join(BASE_DIR, os.getenv("LOCALE_FILE", "locale.json"))
 
 TEXTS = {
