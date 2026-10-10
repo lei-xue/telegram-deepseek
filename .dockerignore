@@ -1,0 +1,15 @@
+# Secrets and personal data stay out of the image; compose passes .env and mounts data/
+.env
+data/
+soul.md
+user.md
+persona.md
+locale.json
+
+# Local tooling
+.git/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log

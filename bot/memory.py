@@ -7,11 +7,12 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
-import i18n
+from . import i18n
 
 load_dotenv()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Personal files live in the repository root, one level above this package
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # soul.md: the assistant's own character. user.md: what it knows about the user (filled in by /setup).
 SOUL_FILE = os.path.join(BASE_DIR, os.getenv("SOUL_FILE", "soul.md"))
 LEGACY_PERSONA_FILE = os.path.join(BASE_DIR, "persona.md")

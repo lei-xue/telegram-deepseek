@@ -4,8 +4,8 @@ Only the basics are asked up front; the rest can be added later with /profile <f
 """
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-import memory
-from i18n import T
+from . import memory
+from .i18n import T
 
 # (key, label in user.md, question text key, button options)
 STEPS = [
