@@ -1,0 +1,31 @@
+{
+  "texts": {
+    "intro": "Hi! Three quick questions so I can get to know you. Skip any of them.",
+    "done": "All set! I'll get to know you as we chat. Send /profile to view or add details. What's on your mind?",
+    "skip": "Skip",
+    "question_name": "What should I call you?",
+    "question_city": "Which city are you in? I'll keep track of your local time.",
+    "question_style": "How would you like me to talk?",
+    "style_options": [
+      "Gentle",
+      "Playful",
+      "Brief and direct"
+    ],
+    "profile_help": "Edit one item: /profile <field> <value>\nFields: name, city, timezone, language, about, style, avoid\nExample: /profile about cats and hiking\n/setup – answer the first questions again",
+    "no_profile": "No profile yet.",
+    "memory_hint": "When the user shares something worth remembering long-term (personal details, preferences, plans, important events, or asks you to remember something), you must call the remember tool with a short fact before replying. Only saying \"noted\" without calling the tool does nothing and you will forget it. Do not save small talk or anything already in memory. Learn details missing from the user profile (work, interests, topics to avoid) naturally over time without interrogating, and save them with remember too.",
+    "name_hint": "The user's name is {name}; it is not your name. When the user asks what their name is or who they are, answer that they are {name}.",
+    "field_aliases": {
+      "about": []
+    }
+  },
+  "patterns": {
+    "claims_search": "",
+    "claims_remember": "",
+    "refusal": "",
+    "question": "",
+    "writing_request": "",
+    "offer": "",
+    "sentence_end": ""
+  }
+}
