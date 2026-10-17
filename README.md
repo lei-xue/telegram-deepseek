@@ -45,6 +45,6 @@ python -m venv .venv
 .venv/bin/python main.py
 ```
 
-**Docker:** `docker compose up -d --build`. To reach Ollama on the host, use `OPENAI_BASE_URL=http://host.docker.internal:11434/v1`.
+**Docker:** `docker compose up -d --build`. Only `data/` is mounted, so put `soul.md`, `user.md` and `locale.json` in `data/`. To reach Ollama on the host, use `OPENAI_BASE_URL=http://host.docker.internal:11434/v1`.
 
 **Windows, start at logon:** `start-windows.ps1` runs the bot from `.venv`, restarts it if it exits and writes `bot.log`. The command to register it as a scheduled task is in the header comment of that file.
